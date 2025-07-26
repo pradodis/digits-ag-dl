@@ -25,9 +25,29 @@ print("Setup inicial e importações concluídos.")
 # --- Funções do Deep Learning ---
 def load_and_preprocess_data():
     digits = load_digits()
-    X = digits.data / 16.0
+    X_original = digits.data # Dados originais antes da normalização
+    X_normalized = digits.data / 16.0 # Dados normalizados
     y = digits.target
-    x_treino, x_teste, y_treino, y_teste = train_test_split(X, y, test_size=0.2, random_state=42)
+    x_treino, x_teste, y_treino, y_teste = train_test_split(X_normalized, y, test_size=0.2, random_state=42)
+
+    # Mostrar uma amostra dos dados antes e depois da normalização
+    sample_indices = np.random.choice(len(X_original), 5, replace=False)
+    sample_original = X_original[sample_indices]
+    sample_normalized = X_normalized[sample_indices]
+
+    comparison_data = []
+    for i in range(len(sample_indices)):
+        comparison_data.append({
+            'Índice Original': sample_indices[i],
+            'Dados Originais (Amostra)': sample_original[i].tolist(),
+            'Dados Normalizados (Amostra)': sample_normalized[i].tolist()
+        })
+
+    comparison_df = pd.DataFrame(comparison_data)
+    print("\nAmostra dos Dados Antes e Depois da Normalização:")
+    display(comparison_df)
+
+
     return x_treino, x_teste, y_treino, y_teste, digits.images
 
 def build_model_for_ag_fitness(input_shape, hidden_layer_1_weights=None, hidden_layer_1_biases=None):
@@ -39,8 +59,8 @@ def build_model_for_ag_fitness(input_shape, hidden_layer_1_weights=None, hidden_
     model = keras.Sequential([
         keras.layers.InputLayer(shape=input_shape),
         keras.layers.Dense(128, activation='relu', name='ag_hidden_layer'), # Nomeamos para fácil acesso
-        keras.layers.Dense(64, activation='relu'),
-        keras.layers.Dense(10, activation='softmax')
+        keras.layers.Dense(64, activation='relu'), # Segunda Camada Oculta
+        keras.layers.Dense(10, activation='softmax') # Camada de saída
     ])
 
     if hidden_layer_1_weights is not None and hidden_layer_1_biases is not None:
@@ -88,6 +108,16 @@ def unflatten_weights(flat_weights, layer_shapes):
 
 print("Funções base e auxiliares definidas.")
 
+# Carregar e preprocessar os dados para definir as variáveis
+x_treino, x_teste, y_treino, y_teste, X = load_and_preprocess_data()
+
+print("\n--- Formas dos Dados ---")
+print(f"Forma de X (dados originais): {X.shape}")
+print(f"Forma de x_treino: {x_treino.shape}")
+print(f"Forma de y_treino: {y_treino.shape}")
+print(f"Forma de x_teste: {x_teste.shape}")
+print(f"Forma de y_teste: {y_teste.shape}")
+
 # --- Carregar e Preparar Dados ---
 x_treino, x_teste, y_treino, y_teste, _ = load_and_preprocess_data()
 
@@ -95,21 +125,34 @@ x_treino, x_teste, y_treino, y_teste, _ = load_and_preprocess_data()
 # E o conjunto de teste final para a avaliação do modelo com os melhores pesos do AG.
 x_ag_val, x_ag_train, y_ag_val, y_ag_train = train_test_split(x_treino, y_treino, test_size=0.7, random_state=42)
 
-# Determinar as formas dos pesos da camada oculta que o AG vai otimizar
-# (Entrada 64 -> Oculta 128)
-# A camada 'ag_hidden_layer' tem índice 1 no modelo Sequential
+#Determinação do Tamanho do Indivíduo no Algoritmo Genético
 temp_model = build_model_for_ag_fitness(input_shape=[64])
 hidden_layer_1_weights_keras_format = temp_model.get_layer('ag_hidden_layer').get_weights()
 hidden_layer_shapes = [(hidden_layer_1_weights_keras_format[0].shape, hidden_layer_1_weights_keras_format[1].shape)]
 individual_size = len(flatten_weights(hidden_layer_1_weights_keras_format))
 
-print(f"Número de neurônios de entrada: {x_treino.shape[1]}")
+print(f"\n---Determinação do Tamanho do Indivíduo no Algoritmo Genético---")
 print(f"Tamanho de um indivíduo AG (vetor de pesos achatado): {individual_size}")
+
+print("\n--- Informações Sobre o Algoritmo Genético ---")
+
+print(f"Número de neurônios de entrada: {x_treino.shape[1]}")
+print(f"Número de neurônios na camada oculta: {hidden_layer_1_weights_keras_format[0].shape[1]}")
+print(f"Número de neurônios na camada de saída: {hidden_layer_1_weights_keras_format[0].shape[0]}")
+print(f"Tamanho das camadas ocultas: {hidden_layer_shapes}")
+print(f"Tamanho do vetor de pesos achatado: {len(flatten_weights(hidden_layer_1_weights_keras_format))}")
+print(f"Tamanho do conjunto de validação do AG: {len(x_ag_val)}")
+print(f"Tamanho do conjunto de treino do AG: {len(x_ag_train)}")
+print(f"Tamanho do conjunto de teste final: {len(x_teste)}")
+
+
+
+print("\n--- Formas dos Subconjuntos para Avaliação do AG ---")
 
 print("\nResumo da arquitetura da MLP para inspeção:")
 temp_model.summary()
 
-# --- Parâmetros do Algoritmo Genético ---
+# --- Parâmetros de Configuração do Algoritmo Genético ---
 POPULATION_SIZE = 50       # Número de indivíduos na população
 NUM_GENERATIONS = 30       # Número de gerações a serem executadas
 MUTATION_RATE = 0.05       # Probabilidade de um peso sofrer mutação
@@ -123,6 +166,123 @@ params_df = pd.DataFrame({
     'Valor': [POPULATION_SIZE, NUM_GENERATIONS, MUTATION_RATE, CROSSOVER_PROBABILITY, ELITE_COUNT, individual_size]
 })
 print(params_df.to_string(index=False))
+
+# Divisão Adicional para Validação do Algoritmo Genético (AG):
+from sklearn.model_selection import train_test_split
+
+x_ag_val, x_ag_train, y_ag_val, y_ag_train = train_test_split(x_treino, y_treino, test_size=0.7, random_state=42)
+
+print("\n--- Formas dos Subconjuntos para Avaliação do AG ---")
+print(f"Forma de x_ag_train: {x_ag_train.shape}")
+print(f"Forma de y_ag_train: {y_ag_train.shape}")
+print(f"Forma de x_ag_val: {x_ag_val.shape}")
+print(f"Forma de y_ag_val: {y_ag_val.shape}")
+
+!pip install python-docx -q
+
+import numpy as np
+import pandas as pd
+from sklearn.datasets import load_digits
+from sklearn.model_selection import train_test_split
+from docx import Document
+from docx.shared import Inches
+
+# --- Carregar e processar os dados ---
+digits = load_digits()
+X = digits.images
+y = digits.target
+
+X_flat = X.reshape((len(X), -1))
+X_normalized = X_flat / 16.0
+
+x_treino, x_teste, y_treino, y_teste = train_test_split(X_normalized, y, test_size=0.2, random_state=42)
+x_ag_train, x_ag_val, y_ag_train, y_ag_val = train_test_split(x_treino, y_treino, test_size=0.3, random_state=42)
+
+# --- Criar os dados da tabela ---
+dados = [
+    ['X (dados originais)', str(X.shape), len(X),
+     'Conjunto de dados completo de imagens de dígitos, antes do achatamento e normalização. Representa a entrada bruta.',
+     'load_digits().images'],
+    ['x_treino', str(x_treino.shape), len(x_treino),
+     'Dados de entrada para o treinamento inicial da Rede Neural.',
+     'train_test_split(X_normalized, y, test_size=0.2, random_state=42)'],
+    ['y_treino', str(y_treino.shape), len(y_treino),
+     'Rótulos correspondentes a x_treino.',
+     'train_test_split(X_normalized, y, test_size=0.2, random_state=42)'],
+    ['x_teste', str(x_teste.shape), len(x_teste),
+     'Dados de entrada para a avaliação final do modelo.',
+     'train_test_split(X_normalized, y, test_size=0.2, random_state=42)'],
+    ['y_teste', str(y_teste.shape), len(y_teste),
+     'Rótulos correspondentes a x_teste.',
+     'train_test_split(X_normalized, y, test_size=0.2, random_state=42)'],
+    ['x_ag_train', str(x_ag_train.shape), len(x_ag_train),
+     'Dados para o treinamento das camadas fixas no AG.',
+     'train_test_split(x_treino, y_treino, test_size=0.3, random_state=42)'],
+    ['y_ag_train', str(y_ag_train.shape), len(y_ag_train),
+     'Rótulos correspondentes a x_ag_train.',
+     'train_test_split(x_treino, y_treino, test_size=0.3, random_state=42)'],
+    ['x_ag_val', str(x_ag_val.shape), len(x_ag_val),
+     'Dados para validação da aptidão dos indivíduos do AG.',
+     'train_test_split(x_treino, y_treino, test_size=0.3, random_state=42)'],
+    ['y_ag_val', str(y_ag_val.shape), len(y_ag_val),
+     'Rótulos correspondentes a x_ag_val.',
+     'train_test_split(x_treino, y_treino, test_size=0.3, random_state=42)'],
+]
+
+# --- Criar o documento Word com a tabela ---
+doc = Document()
+doc.add_heading('Resumo dos Conjuntos de Dados Utilizados', level=1)
+
+table = doc.add_table(rows=1, cols=5)
+table.style = 'Light Grid Accent 1'
+
+# Cabeçalhos
+hdr_cells = table.rows[0].cells
+hdr_cells[0].text = 'Conjunto de Dados'
+hdr_cells[1].text = 'Forma (Dimensões)'
+hdr_cells[2].text = 'Número de Amostras'
+hdr_cells[3].text = 'Finalidade'
+hdr_cells[4].text = 'Origem'
+
+# Adicionar linhas
+for row in dados:
+    row_cells = table.add_row().cells
+    for i, val in enumerate(row):
+        row_cells[i].text = str(val)
+
+# Salvar arquivo
+file_path = '/content/tabela_dados.docx'
+doc.save(file_path)
+
+print("✅ Documento Word gerado com sucesso!")
+
+# Permitir download
+from google.colab import files
+files.download(file_path)
+
+from tabulate import tabulate
+
+# Suponha que sua tabela já esteja em um DataFrame chamado `tabela`
+print(tabulate(tabela, headers='keys', tablefmt='fancy_grid', showindex=False))
+
+!pip install pydot graphviz
+!sudo apt-get install graphviz
+
+from tensorflow.keras.utils import plot_model
+import os
+
+# Certifique-se de ter o modelo compilado:
+modelo_para_plotar = build_model_for_ag_fitness(input_shape=[64])
+
+# Diretório de saída
+saida_arquivo = "arquitetura_rede.png"
+
+# Gera o diagrama
+plot_model(modelo_para_plotar, to_file=saida_arquivo, show_shapes=True, show_layer_names=True, dpi=120)
+
+# Mostra no notebook (se estiver usando Jupyter/Colab)
+from IPython.display import Image
+Image(filename=saida_arquivo)
 
 # --- Funções do Algoritmo Genético ---
 
@@ -198,6 +358,82 @@ def replace_population(old_population, parents, new_children, pop_size, elite_co
     return new_population_local
 
 print("Funções do Algoritmo Genético definidas.")
+
+print("\n--- Iniciando Otimização com Algoritmo Genético ---")
+print(f"Parâmetros: População={POPULATION_SIZE}, Gerações={NUM_GENERATIONS}, Mutação={MUTATION_RATE}, Crossover={CROSSOVER_PROBABILITY}")
+
+# --- Funções do Algoritmo Genético ---
+
+### **Passo 1: Gerar População Inicial**
+def generate_initial_population(pop_size, individual_size):
+    population = [np.random.uniform(low=-1.0, high=1.0, size=individual_size) for _ in range(pop_size)]
+    return population
+
+### **Passo 2: Avaliar Aptidão (Fitness)**
+def evaluate_fitness(individual, x_val, y_val, model_input_shape, hidden_layer_shapes_info):
+    weights_w_b = unflatten_weights(individual, hidden_layer_shapes_info)
+    hidden_weights = weights_w_b[0]
+    hidden_biases = weights_w_b[1]
+
+    model = build_model_for_ag_fitness(model_input_shape,
+                                       hidden_layer_1_weights=hidden_weights,
+                                       hidden_layer_1_biases=hidden_biases)
+
+    # Pequeno treino para as outras camadas se adaptarem
+    model.fit(x_ag_train, y_ag_train, epochs=5, verbose=0)
+
+    _, accuracy = model.evaluate(x_val, y_val, verbose=0)
+    return accuracy
+
+### **Passo 3: Verificar Condição de Término** (Função de monitoramento)
+def check_termination_condition(generation, max_generations, best_fitness_current_gen):
+    return generation >= max_generations
+
+### **Passo 4: Seleção**
+def select_parents(population, fitness_scores, num_parents_to_select, elite_count=1):
+    sorted_indices = np.argsort(fitness_scores)[::-1]
+    sorted_population = [population[i] for i in sorted_indices]
+
+    parents = sorted_population[:elite_count]
+
+    for _ in range(num_parents_to_select - elite_count):
+        # Seleção por Torneio: seleciona um pequeno grupo e escolhe o melhor
+        candidate_indices = np.random.choice(len(population), size=min(5, len(population)), replace=False)
+        tournament_candidates = [population[i] for i in candidate_indices]
+        tournament_fitness = [fitness_scores[i] for i in candidate_indices]
+        best_in_tournament_idx = np.argmax(tournament_fitness)
+        parents.append(tournament_candidates[best_in_tournament_idx])
+
+    return parents
+
+### **Passo 5: Cruzamento (Crossover)**
+def crossover(parent1, parent2):
+    crossover_point = np.random.randint(1, len(parent1))
+    child1 = np.concatenate((parent1[:crossover_point], parent2[crossover_point:]))
+    child2 = np.concatenate((parent2[:crossover_point], parent1[crossover_point:]))
+    return child1, child2
+
+### **Passo 6: Mutação**
+def mutate(individual, mutation_rate, mutation_strength=0.1):
+    for i in range(len(individual)):
+        if np.random.rand() < mutation_rate:
+            individual[i] += np.random.uniform(-mutation_strength, mutation_strength)
+            individual[i] = np.clip(individual[i], -1.0, 1.0) # Garante limites de pesos
+    return individual
+
+### **Passo 7: Substituir População Antiga**
+def replace_population(old_population, parents, new_children, pop_size, elite_count=1):
+    new_population_local = parents[:elite_count]
+
+    current_children_idx = 0
+    while len(new_population_local) < pop_size and current_children_idx < len(new_children):
+        new_population_local.append(new_children[current_children_idx])
+        current_children_idx += 1
+
+    while len(new_population_local) < pop_size: # Preenche se ainda faltar (raro)
+        new_population_local.append(np.random.uniform(low=-1.0, high=1.0, size=individual_size))
+
+    return new_population_local
 
 print("\n--- Iniciando Otimização com Algoritmo Genético ---")
 print(f"Parâmetros: População={POPULATION_SIZE}, Gerações={NUM_GENERATIONS}, Mutação={MUTATION_RATE}, Crossover={CROSSOVER_PROBABILITY}")
